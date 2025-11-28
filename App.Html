@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS - Colony Command Center</title>
+    <!-- Tailwind CSS CDN for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font and base styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #000;
+            color: #e2e8f0; /* slate-200 */
+            overflow: hidden;
+        }
+
+        /* Canvas should be full size of its container */
+        #planet-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Custom scrollbar for terminal */
+        #system-logs::-webkit-scrollbar {
+            width: 4px;
+        }
+        #system-logs::-webkit-scrollbar-thumb {
+            background-color: #0e7490; /* cyan-600 */
+            border-radius: 2px;
+        }
+        #system-logs::-webkit-scrollbar-track {
+            background-color: #0f172a; /* slate-900 */
+        }
+
+        /* Custom animation for Rover movement */
+        @keyframes spin-slow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin-slow {
+            animation: spin-slow 5s linear infinite;
+        }
+        
+        /* Glitch effect for header text (optional but cool) */
+        .glitch-text {
+            text-shadow: 1px 1px 0 #06b6d4, -1px -1px 0 #dc2626;
+        }
+    </style>
+    <!-- Lucide Icons (only necessary functions defined below, not loaded via CDN for simplicity) -->
+</head>
+<body class="min-h-screen bg-black text-slate-200 font-sans overflow-hidden">
+
+    <!-- HEADER -->
+    <header id="header" class="fixed top-0 w-full h-16 border-b border-slate-800 bg-black/80 backdrop-blur-md flex items-center justify-between px-6 z-50">
+        <div class="flex items-center gap-4">
+            <div id="alert-indicator" class="w-3 h-3 rounded-full bg-green-500"></div>
+            <h1 class="text-xl font-bold tracking-widest text-slate-100 flex items-center gap-2 glitch-text">
+                NEXUS <span class="text-cyan-500 text-xs px-2 py-0.5 border border-cyan-500/30 rounded">CMD_V.4.2</span>
+            </h1>
+        </div>
+        <div class="flex items-center gap-6 text-xs font-mono text-slate-500">
+            <button onclick="document.getElementById('briefing-modal').classList.remove('hidden')" class="flex items-center gap-2 hover:text-cyan-400 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg> BRIEFING
+            </button>
+            <span class="flex items-center gap-2">UPLINK: STABLE</span>
+            <span>SOL DATE: 4052</span>
+            <span id="current-time" class="text-cyan-400">00:00:00</span>
+        </div>
+    </header>
+
+    <!-- MAIN GRID -->
+    <main class="pt-20 px-4 pb-12 h-screen grid grid-cols-1 lg:grid-cols-12 gap-4">
+        
+        <!-- LEFT PANEL: RESOURCES (IoT) -->
+        <div class="lg:col-span-3 flex flex-col gap-4">
+            <!-- Card 1: Environment -->
+            <div class="bg-slate-900/40 border border-slate-800 p-5 rounded-xl backdrop-blur-sm">
+                <h2 class="text-cyan-400 font-bold text-sm mb-4 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z"></path><path d="M14.47 18.47a5 5 0 0 0 5-5H12a2 2 0 0 1 0-4h.5a.5.5 0 0 0 0-1H12a3 3 0 0 0 0 6h4.5v2"></path><path d="M14 8h-4"></path></svg> ENV_TELEMETRY
+                </h2>
+                <!-- OXYGEN -->
+                <div id="oxygen-graph"></div>
+                <!-- TEMPERATURE -->
+                <div id="temp-graph"></div>
+                <!-- ENERGY -->
+                <div id="energy-graph"></div>
+            </div>
+
+            <!-- Card 2: Actions -->
+            <div class="bg-slate-900/40 border border-slate-800 p-5 rounded-xl flex-1 flex flex-col gap-2">
+                <h2 class="text-slate-400 font-bold text-sm mb-2 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="10" rx="2"/><path d="M7 10V2h10v8"/></svg> SYSTEM_CTRL
+                </h2>
+                <button onclick="handleReboot()" class="group w-full py-3 bg-slate-800 hover:bg-cyan-600/20 border border-slate-700 hover:border-cyan-500 text-xs font-mono transition-all rounded flex items-center justify-between px-4">
+                    <span>REPLENISH_RESOURCES()</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="group-hover:rotate-180 transition-transform"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg>
+                </button>
+                <button class="group w-full py-3 bg-slate-800 hover:bg-red-600/20 border border-slate-700 hover:border-red-500 text-xs font-mono transition-all rounded flex items-center justify-between px-4">
+                    <span>EMERGENCY_LOCKDOWN()</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </button>
+                
+                <!-- AI Prediction Box -->
+                <div class="mt-auto p-3 bg-blue-900/10 border border-blue-500/20 rounded">
+                    <div class="flex items-center gap-2 text-blue-400 mb-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h7"/><path d="M17 3v4"/><path d="M21 3v4"/><path d="M7 3v4"/><path d="M14 21a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-6z"/></svg> <span class="text-[10px] font-bold">AI PREDICTION MODEL</span>
+                    </div>
+                    <p class="text-[10px] text-slate-400 leading-relaxed">
+                        Machine Learning model predicts <span class="text-white">Dust Storm</span> probability at 85% within 48 hours. Suggest rover recall.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- CENTER PANEL: VISUALIZER (Graphics) -->
+        <div class="lg:col-span-6 relative bg-black border border-slate-800 rounded-xl overflow-hidden group">
+            <div class="absolute top-4 left-4 z-10">
+                <div class="text-[10px] text-cyan-500 font-mono mb-1">TARGET: MARS_COLONY_ALPHA</div>
+                <div class="text-2xl font-black text-white tracking-tighter">SECTOR 7</div>
+            </div>
+            
+            <!-- The 3D Canvas -->
+            <div class="w-full h-full opacity-80 group-hover:opacity-100 transition-opacity">
+                <canvas id="planet-canvas"></canvas>
+            </div>
+
+            <!-- Overlay Interface -->
+            <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-4">
+                <div class="px-4 py-2 bg-slate-900/80 border border-slate-700 rounded-full text-xs font-mono flex gap-2 items-center backdrop-blur">
+                    <div id="feed-indicator" class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> Live Feed
+                </div>
+                <div class="px-4 py-2 bg-slate-900/80 border border-slate-700 rounded-full text-xs font-mono flex gap-2 items-center backdrop-blur">
+                    Mode: <span class="text-cyan-400">Scan</span>
+                </div>
+            </div>
+            
+            <!-- Crosshair Decor -->
+            <div class="absolute inset-0 pointer-events-none border-[30px] border-transparent">
+                <div class="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-slate-600"></div>
+                <div class="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-slate-600"></div>
+                <div class="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-slate-600"></div>
+                <div class="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-slate-600"></div>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: LOGS & ALGOS -->
+        <div class="lg:col-span-3 flex flex-col gap-4">
+            
+            <!-- Algorithm Showcase -->
+            <div class="bg-slate-900/50 border border-slate-700 p-4 rounded-lg">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-cyan-400 font-mono text-sm flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="16" y1="6" x2="16" y2="22"></line><line x1="8" y1="2" x2="8" y2="18"></line></svg> ROVER_NAV_SYSTEM
+                    </h3>
+                    <button id="start-mission-btn" class="text-xs bg-cyan-600 hover:bg-cyan-500 text-white px-2 py-1 rounded disabled:opacity-50 flex items-center gap-1">
+                         START MISSION
+                         <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    </button>
+                </div>
+                
+                <div id="rover-grid" class="grid grid-cols-5 gap-1 aspect-square">
+                    <!-- Grid cells will be generated by JS -->
+                </div>
+                <div id="rover-coords" class="mt-2 text-[10px] text-slate-500 font-mono">
+                    COORD: [0, 0]
+                </div>
+            </div>
+
+            <!-- Terminal / Logs -->
+            <div class="flex-1 bg-black border border-slate-800 rounded-xl p-4 font-mono text-xs overflow-hidden flex flex-col">
+                <h3 class="text-slate-500 mb-3 flex items-center gap-2 border-b border-slate-900 pb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg> SYSTEM_LOGS
+                </h3>
+                <div id="system-logs" class="flex-1 overflow-y-auto space-y-2 pr-2">
+                    <!-- Logs will be appended here -->
+                    <div class="animate-pulse text-cyan-500">_</div>
+                </div>
+            </div>
+
+            <!-- Security Status -->
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between">
+                <div>
+                    <div class="text-[10px] text-slate-500">FIREWALL</div>
+                    <div class="text-green-400 font-bold">ACTIVE</div>
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-green-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="fixed bottom-0 w-full bg-black/90 border-t border-slate-800 py-2 px-6 flex justify-between items-center text-[10px] font-mono text-slate-500 z-40">
+        <div class="flex items-center gap-4">
+           <span class="flex items-center gap-1 text-green-500">
+               <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"></path><path d="M17 9l-5 5-5-5"></path><path d="M12 11V3"></path></svg> SYS_OPTIMAL
+           </span>
+           <span class="hidden md:inline">| MEM: <span id="mem-usage">42</span>%</span>
+           <span class="hidden md:inline">| CPU: <span id="cpu-usage">12</span>%</span>
+        </div>
+        <div class="flex items-center gap-2">
+           <span>DEVELOPED FOR COMPUTER SCIENCE PORTFOLIO</span>
+           <span class="text-slate-700">|</span>
+           <span>© 2025 NEXUS SYSTEMS</span>
+        </div>
+    </footer>
+
+    <!-- BRIEFING MODAL -->
+    <div id="briefing-modal" class="hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900/90 border border-cyan-500/50 p-6 rounded-2xl max-w-2xl w-full relative overflow-hidden transform transition-transform duration-500 scale-100">
+            <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-900/20 via-transparent to-transparent pointer-events-none"></div>
+
+            <button onclick="document.getElementById('briefing-modal').classList.add('hidden')" class="absolute top-4 right-4 text-slate-400 hover:text-cyan-500 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+            </button>
+
+            <div class="flex items-center gap-3 mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-cyan-500"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                <h2 class="text-2xl font-bold text-white tracking-wide">MISSION BRIEFING: NEXUS CMD</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="space-y-4 text-slate-300 leading-relaxed text-sm md:text-base">
+                    <p>
+                        <strong class="text-cyan-400">ยินดีต้อนรับสู่ศูนย์บัญชาการอาณานิคมดาวอังคาร (Mars Colony Command Center)</strong>
+                    </p>
+                    <p>
+                        นี่คือ Web Application จำลองระบบปฏิบัติการ (Simulator) ที่สร้างขึ้นเพื่อแสดงทักษะขั้นสูงสำหรับ Portfolio
+                    </p>
+                    <ul class="list-disc list-inside space-y-2 marker:text-cyan-500">
+                        <li><strong>Visual Core:</strong> การเรนเดอร์กราฟิก 3D และ Particles ด้วยคณิตศาสตร์ผ่าน Canvas API</li>
+                        <li><strong>Algorithm Core:</strong> ระบบนำทาง Rover ด้วย Pathfinding Algorithm บน Grid</li>
+                        <li><strong>IoT Core:</strong> การจำลองและแสดงผลข้อมูล Sensor แบบ Real-time</li>
+                        <li><strong>System Logic:</strong> การจำลองเหตุการณ์สุ่มและระบบ Logs ที่ซับซ้อน</li>
+                    </ul>
+                    <p class="text-xs text-slate-500 mt-4">
+                        *ข้อมูลและเหตุการณ์ทั้งหมดเป็นการจำลองเพื่อการสาธิตเท่านั้น*
+                    </p>
+                </div>
+                
+                <!-- Image Placeholder / Visual Aid -->
+                <div class="relative rounded-xl overflow-hidden border border-slate-800 h-48 md:h-auto bg-black flex items-center justify-center group">
+                    <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1619360142538-140063003320?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D')] bg-cover bg-center opacity-60 group-hover:opacity-80 transition-opacity duration-500"></div>
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+                    <div class="relative z-10 text-center p-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-12 h-12 text-cyan-500 mx-auto mb-2 animate-pulse"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        <h3 class="text-lg font-bold text-white">MARS COLONY ALPHA</h3>
+                        <p class="text-xs text-cyan-300">Visual Concept</p>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="document.getElementById('briefing-modal').classList.add('hidden')" class="mt-6 w-full py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2">
+                เข้าสู่ระบบบัญชาการ (ENTER COMMAND) 
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Global state simulation
+        let globalState = {
+            time: new Date(),
+            logs: [
+                { id: 'init-1', text: "SYSTEM INITIALIZED...", type: "info" },
+                { id: 'init-2', text: "CONNECTING TO SATELLITE LINK...", type: "info" },
+                { id: 'init-3', text: "CONNECTION ESTABLISHED (PING 450ms)", type: "success" }
+            ],
+            oxygen: 98.5,
+            temp: -62.0,
+            energy: 87.4,
+            alertMode: false,
+            roverPos: 0,
+            targetPos: 24,
+            path: [],
+            isComputing: false,
+            GRID_SIZE: 5
+        };
+
+        // DOM Elements
+        const logContainer = document.getElementById('system-logs');
+        const timeDisplay = document.getElementById('current-time');
+        const alertIndicator = document.getElementById('alert-indicator');
+        const roverGridEl = document.getElementById('rover-grid');
+        const roverCoordsEl = document.getElementById('rover-coords');
+        const startMissionBtn = document.getElementById('start-mission-btn');
+        const feedIndicator = document.getElementById('feed-indicator');
+
+        /**
+         * LOGIC: System Logging
+         */
+        function addLog(text, type) {
+            const uniqueId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            globalState.logs.push({ id: uniqueId, text, type });
+
+            // Keep only the last 6 logs visible
+            if (globalState.logs.length > 6) {
+                globalState.logs = globalState.logs.slice(-6);
+            }
+            renderLogs();
+        }
+
+        function renderLogs() {
+            logContainer.innerHTML = '';
+            globalState.logs.forEach(log => {
+                const logDiv = document.createElement('div');
+                logDiv.className = `
+                    p-2 border-l-2 rounded bg-opacity-10 text-white
+                    ${log.type === 'error' || log.type === 'warning' ? 'border-red-500 bg-red-900 text-red-400' : ''}
+                    ${log.type === 'success' ? 'border-green-500 bg-green-900 text-green-400' : ''}
+                    ${log.type === 'info' ? 'border-cyan-500 bg-cyan-900 text-cyan-400' : ''}
+                `;
+                logDiv.innerHTML = `<span class="opacity-50 mr-2">[${new Date().toLocaleTimeString()}]</span>${log.text}`;
+                logContainer.appendChild(logDiv);
+            });
+            // Scroll to bottom
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        /**
+         * LOGIC: Sensor Graph Rendering (IoT Data)
+         */
+        function renderSensorGraph(containerId, label, value, unit, colorClass, history) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const color = colorClass.replace('text-', '');
+            
+            // Generate graph bars (simple SVG sparkline could be used, but using divs for simplicity)
+            const graphBars = Array.from({ length: 20 }).map((_, i) => {
+                const height = i === 19 ? value : (Math.random() * 60 + 20); // Last bar is actual value
+                return `
+                    <div class="w-full bg-slate-800 rounded-sm relative overflow-hidden" style="height: 100%;">
+                        <div class="absolute bottom-0 w-full opacity-60 bg-${color} transition-all duration-500" style="height: ${height}%;"></div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="mb-4">
+                    <div class="flex justify-between text-xs text-slate-400 font-mono mb-1">
+                        <span>${label}</span>
+                        <span class="${colorClass}">${value.toFixed(1)} ${unit}</span>
+                    </div>
+                    <div class="h-8 flex items-end gap-[2px]">
+                        ${graphBars}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAllGraphs() {
+            renderSensorGraph('oxygen-graph', 'OXYGEN LEVEL (O2)', globalState.oxygen, '%', 
+                globalState.oxygen < 95 ? 'text-red-500' : 'text-cyan-400', []);
+            renderSensorGraph('temp-graph', 'EXT. TEMPERATURE', globalState.temp, '°C', 'text-amber-400', []);
+            renderSensorGraph('energy-graph', 'REACTOR OUTPUT', globalState.energy, 'MW', 'text-green-400', []);
+        }
+
+        /**
+         * LOGIC: Rover Pathfinding (Algorithm Core)
+         */
+        function renderRoverGrid() {
+            roverGridEl.innerHTML = '';
+            for (let i = 0; i < globalState.GRID_SIZE * globalState.GRID_SIZE; i++) {
+                const isRover = i === globalState.roverPos;
+                const isTarget = i === globalState.targetPos;
+                const isPath = globalState.path.includes(i);
+
+                let classes = 'rounded-sm border border-slate-800 relative flex items-center justify-center';
+                if (isRover) classes += ' bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.8)]';
+                else if (isTarget) classes += ' bg-orange-500';
+                else if (isPath) classes += ' bg-cyan-900/50';
+                else classes += ' bg-slate-900';
+
+                const cell = document.createElement('div');
+                cell.className = classes;
+                
+                if (isRover) cell.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white animate-spin-slow"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>'; // CPU icon
+                if (isTarget) cell.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>'; // Crosshair icon
+                
+                roverGridEl.appendChild(cell);
+            }
+            roverCoordsEl.textContent = `COORD: [${Math.floor(globalState.roverPos / globalState.GRID_SIZE)}, ${globalState.roverPos % globalState.GRID_SIZE}]`;
+        }
+
+        startMissionBtn.addEventListener('click', () => {
+            if (globalState.isComputing || globalState.roverPos === globalState.targetPos) return;
+            
+            globalState.isComputing = true;
+            startMissionBtn.textContent = 'COMPUTING...';
+            startMissionBtn.disabled = true;
+
+            setTimeout(() => {
+                let newPath = [];
+                let current = globalState.roverPos;
+                const row = Math.floor(current / globalState.GRID_SIZE);
+                const col = current % globalState.GRID_SIZE;
+                const targetRow = Math.floor(globalState.targetPos / globalState.GRID_SIZE);
+                const targetCol = globalState.targetPos % globalState.GRID_SIZE;
+
+                let r = row, c = col;
+                while(c < targetCol) { c++; newPath.push(r * globalState.GRID_SIZE + c); }
+                while(r < targetRow) { r++; newPath.push(r * globalState.GRID_SIZE + c); }
+                
+                globalState.path = newPath;
+                
+                let step = 0;
+                const moveInterval = setInterval(() => {
+                    if (step < newPath.length) {
+                        globalState.roverPos = newPath[step];
+                        renderRoverGrid();
+                        step++;
+                    } else {
+                        clearInterval(moveInterval);
+                        globalState.isComputing = false;
+                        startMissionBtn.textContent = 'START MISSION';
+                        startMissionBtn.disabled = false;
+                        globalState.path = []; // Clear path after arrival
+                        addLog("ROVER MISSION COMPLETE. TARGET REACHED.", "success");
+                    }
+                }, 300);
+
+            }, 800);
+            addLog("ROVER NAVIGATION INITIATED", "info");
+        });
+        
+        /**
+         * LOGIC: Manual Control
+         */
+        window.handleReboot = function() {
+            globalState.oxygen = 100;
+            globalState.energy = 100;
+            document.getElementById('cpu-usage').textContent = 10;
+            document.getElementById('mem-usage').textContent = 30;
+            addLog("MANUAL SYSTEM REBOOT INITIATED", "info");
+            addLog("RESOURCES REPLENISHED", "success");
+            renderAllGraphs();
+        }
+
+        /**
+         * LOGIC: Planet Canvas Renderer (3D Simulation)
+         */
+        const canvas = document.getElementById('planet-canvas');
+        let ctx, particles = [], rotation = 0, radius = 100;
+
+        function initCanvas() {
+            ctx = canvas.getContext('2d');
+            
+            const resize = () => {
+                if (canvas.parentElement) {
+                    canvas.width = canvas.parentElement.clientWidth;
+                    canvas.height = canvas.parentElement.clientHeight;
+                    radius = Math.min(canvas.width, canvas.height) * 0.35;
+                }
+            };
+            window.addEventListener('resize', resize);
+            resize();
+
+            // Generate particles
+            const particleCount = 600;
+            for (let i = 0; i < particleCount; i++) {
+                const u = Math.random();
+                const v = Math.random();
+                const thetaR = 2 * Math.PI * u;
+                const phiR = Math.acos(2 * v - 1);
+                particles.push({
+                    theta: thetaR,
+                    phi: phiR,
+                    size: Math.random() * 1.5 + 0.5,
+                });
+            }
+        }
+
+        function renderPlanet() {
+            if (!ctx || !canvas) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+
+            rotation += 0.002;
+
+            // Draw Scanning Ring
+            const ringColor = globalState.alertMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(14, 165, 233, 0.2)';
+            ctx.strokeStyle = ringColor;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius * 1.4, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Render Particles
+            const planetColor = globalState.alertMode ? 'rgba(239, 68, 68' : 'rgba(14, 165, 233';
+            const tilt = 0.3;
+
+            particles.forEach(p => {
+                // Rotate 3D coordinates
+                const x = radius * Math.sin(p.phi) * Math.cos(p.theta + rotation);
+                const y = radius * Math.sin(p.phi) * Math.sin(p.theta + rotation);
+                const z = radius * Math.cos(p.phi);
+
+                // Tilt transformation
+                const y_tilted = y * Math.cos(tilt) - z * Math.sin(tilt);
+                const z_tilted = y * Math.sin(tilt) + z * Math.cos(tilt);
+
+                // Projection to 2D
+                const scale = 300 / (300 - z_tilted);
+                const x2d = cx + x * scale;
+                const y2d = cy + y_tilted * scale;
+
+                // Draw only front-facing
+                if (z_tilted < 0) {
+                   const alpha = (Math.abs(z_tilted) / radius);
+                   ctx.fillStyle = `${planetColor}, ${alpha})`;
+                   
+                   ctx.beginPath();
+                   ctx.arc(x2d, y2d, p.size * scale, 0, Math.PI * 2);
+                   ctx.fill();
+                }
+            });
+
+            requestAnimationFrame(renderPlanet);
+        }
+
+        /**
+         * LOGIC: Main System Loop
+         */
+        function updateSystemState() {
+            // Update Clock
+            timeDisplay.textContent = globalState.time.toLocaleTimeString();
+            
+            // System Fluctuation (IoT)
+            globalState.time = new Date();
+            globalState.oxygen = Math.min(100, Math.max(90, globalState.oxygen + (Math.random() - 0.5) * 0.5));
+            globalState.temp += (Math.random() - 0.5) * 0.5;
+            globalState.energy = Math.max(0, globalState.energy - 0.05);
+
+            // CPU/MEM Fluctuation
+            document.getElementById('cpu-usage').textContent = (10 + Math.random() * 5).toFixed(0);
+            document.getElementById('mem-usage').textContent = (30 + Math.random() * 10).toFixed(0);
+
+            // Random Event
+            if (Math.random() > 0.98) {
+               addLog("WARNING: SOLAR FLARE DETECTED", "warning");
+               globalState.alertMode = true;
+               
+               // Visual update
+               alertIndicator.classList.remove('bg-green-500');
+               alertIndicator.classList.add('bg-red-500', 'animate-ping');
+               document.body.classList.add('shadow-[inset_0_0_50px_rgba(220,38,38,0.2)]');
+
+               setTimeout(() => {
+                   globalState.alertMode = false;
+                   addLog("SOLAR FLARE PASSED. SYSTEMS NORMAL.", "success");
+
+                   // Visual update reset
+                   alertIndicator.classList.remove('bg-red-500', 'animate-ping');
+                   alertIndicator.classList.add('bg-green-500');
+                   document.body.classList.remove('shadow-[inset_0_0_50px_rgba(220,38,38,0.2)]');
+               }, 4000);
+            }
+            
+            renderAllGraphs();
+            renderRoverGrid(); 
+        }
+
+        /**
+         * Initialization
+         */
+        window.onload = function() {
+            // 1. Initial Render
+            renderLogs();
+            renderRoverGrid();
+            renderAllGraphs();
+            
+            // 2. Init Canvas (3D)
+            initCanvas();
+            requestAnimationFrame(renderPlanet); // Start 3D loop
+
+            // 3. Start System Loop (IoT and Random Events)
+            setInterval(updateSystemState, 1000);
+        }
+
+    </script>
+</body>
+</html>
